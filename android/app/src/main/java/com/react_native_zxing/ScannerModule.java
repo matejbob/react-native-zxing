@@ -2,7 +2,7 @@ package com.react_native_zxing;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.support.annotation.NonNull;
+import androidx.annotation.NonNull;
 import android.util.Log;
 
 import com.facebook.react.bridge.ActivityEventListener;
@@ -23,10 +23,11 @@ public class ScannerModule extends ReactContextBaseJavaModule implements Activit
 
     private final ReactApplicationContext mReactContext;
     private Callback mCallback;
+    private boolean mCallbackInvoked;
 
     public ScannerModule(ReactApplicationContext reactContext) {
         super(reactContext);
-        mReactContext = reactContext;
+        mReactContext = reactContext;        
     }
 
     @Override
@@ -39,6 +40,8 @@ public class ScannerModule extends ReactContextBaseJavaModule implements Activit
                      String prompt,
                      Callback callback) {
         mCallback = callback;
+        mCallbackInvoked = false;
+
         Activity activity = getCurrentActivity();
 
         if (activity != null) {
@@ -46,6 +49,7 @@ public class ScannerModule extends ReactContextBaseJavaModule implements Activit
                     .setPrompt(prompt == null ? "" : prompt)
                     .setBeepEnabled(isBeepEnable)
                     .initiateScan();
+
             mReactContext.addActivityEventListener(this);
         }
     }
@@ -56,6 +60,8 @@ public class ScannerModule extends ReactContextBaseJavaModule implements Activit
                      ReadableArray barcodeTypes,
                      Callback callback) {
         mCallback = callback;
+        mCallbackInvoked = false;
+
         Activity activity = getCurrentActivity();
 
         List<String> types = getBarcodesTypes(barcodeTypes);
@@ -68,31 +74,11 @@ public class ScannerModule extends ReactContextBaseJavaModule implements Activit
                     .setOrientationLocked(isOrientationLocked)
                     .setCaptureActivity(ScannerActivity.class)
                     .initiateScan();
+
             mReactContext.addActivityEventListener(this);
         }
     }
 
-    @ReactMethod
-    void openScannerWithPhoto(boolean isBeepEnable,
-                     String prompt,
-                     ReadableArray barcodeTypes,
-                     Callback callback) {
-        mCallback = callback;
-        Activity activity = getCurrentActivity();
-        List<String> types = getBarcodesTypes(barcodeTypes);
-
-        if (activity != null) {
-            new IntentIntegrator(activity)
-                    .setPrompt(prompt == null ? "" : prompt)
-                    .setBeepEnabled(isBeepEnable)
-                    .setDesiredBarcodeFormats(types)
-                    .setBarcodeImageEnabled(true)
-                    .initiateScan();
-            mReactContext.addActivityEventListener(this);
-        }
-    }
-
-    
     private List<String> getBarcodesTypes(ReadableArray barcodeTypes) {
         if (barcodeTypes == null) {
             return null;
@@ -109,12 +95,15 @@ public class ScannerModule extends ReactContextBaseJavaModule implements Activit
     }
 
     @Override
-    public void onActivityResult(Activity activity, int requestCode, int resultCode, Intent data) {
-        IntentResult result = IntentIntegrator.parseActivityResult(resultCode, data);
-        mCallback.invoke(result.getContents(), result.getBarcodeImagePath());
-        
-        // Remove the listener since we are removing this activity.
-        mReactContext.removeActivityEventListener(this);
+    public synchronized void onActivityResult(Activity activity, int requestCode, int resultCode, Intent data) {
+        if (!mCallbackInvoked) {
+            IntentResult result = IntentIntegrator.parseActivityResult(resultCode, data);
+            
+            mCallbackInvoked = true;
+            mCallback.invoke(result.getContents());
+
+            mReactContext.removeActivityEventListener(this);
+        }
     }
 
     @Override
